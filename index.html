@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>📚 Maale Amos Knowledge Base</title>
+<meta http-equiv="refresh" content="60">
+<style>
+body { font-family: 'Heebo', Arial, sans-serif; max-width: 1100px; margin: 0 auto; padding: 20px; background: #f5f5f7; color: #1d1d1f; }
+header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px; border-radius: 14px; margin-bottom: 20px; }
+header h1 { margin: 0; font-size: 28px; }
+header .sub { opacity: 0.85; font-size: 14px; margin-top: 6px; }
+.tabs { display: flex; gap: 8px; margin: 20px 0; flex-wrap: wrap; }
+.tab { background: white; padding: 10px 20px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; }
+.tab.active { border-color: #667eea; font-weight: bold; }
+.panel { background: white; padding: 20px; border-radius: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 16px; }
+.stat-row { display: flex; gap: 14px; flex-wrap: wrap; margin: 16px 0; }
+.stat { background: white; padding: 16px; border-radius: 10px; flex: 1; min-width: 140px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.stat .num { font-size: 28px; font-weight: bold; color: #667eea; }
+.stat .label { color: #666; font-size: 13px; margin-top: 4px; }
+.msg { background: #fafafa; padding: 10px 14px; margin: 8px 0; border-radius: 8px; border-right: 3px solid #ccc; }
+.msg .meta { color: #888; font-size: 12px; margin-bottom: 4px; }
+.msg .text { line-height: 1.6; }
+.msg.bot { border-right-color: #34c759; }
+.article-card { background: #fafafa; padding: 12px 16px; border-radius: 10px; margin: 10px 0; }
+.article-card a { color: #007aff; text-decoration: none; font-weight: 600; }
+hr { border: 0; border-top: 1px solid #eee; margin: 16px 0; }
+.refresh { color: #888; font-size: 12px; text-align: left; }
+.author { font-weight: 600; }
+.author.claude-main { color: #007aff; }
+.author.claude-bot { color: #34c759; }
+.author.claude-voice { color: #af52de; }
+.author.claw { color: #ff9500; }
+.author.yossi { color: #ff3b30; }
+.author.watchdog { color: #ff3b30; }
+.author.camera-agent { color: #5856d6; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; background: #eee; margin-right: 4px; }
+input[type=search] { width: 100%; padding: 10px 14px; font-size: 16px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📚 Maale Amos Knowledge Base</h1>
+  <div class="sub">מאגר מידע מקיף של קהילת מעלה עמוס - מתעדכן כל 10 דקות</div>
+</header>
+
+<div class="stat-row" id="stats">
+  <div class="stat"><div class="num" id="msg-count">...</div><div class="label">הודעות WhatsApp</div></div>
+  <div class="stat"><div class="num" id="team-count">...</div><div class="label">הודעות סוכנים</div></div>
+  <div class="stat"><div class="num" id="art-count">...</div><div class="label">כתבות</div></div>
+  <div class="stat"><div class="num" id="media-count">...</div><div class="label">קבצי מדיה</div></div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="show('groups')">קבוצות WhatsApp</div>
+  <div class="tab" onclick="show('team')">צוות סוכנים</div>
+  <div class="tab" onclick="show('articles')">כתבות</div>
+  <div class="tab" onclick="show('media')">מדיה</div>
+  <div class="tab" onclick="show('search')">חיפוש</div>
+</div>
+
+<div id="groups" class="panel"></div>
+<div id="team" class="panel" style="display:none"></div>
+<div id="articles" class="panel" style="display:none"></div>
+<div id="media" class="panel" style="display:none"></div>
+<div id="search" class="panel" style="display:none">
+  <input type="search" id="q" placeholder="חיפוש בכל ההודעות...">
+  <div id="results"></div>
+</div>
+
+<div class="refresh">עודכן <span id="now"></span></div>
+
+<script>
+const GROUPS = ['מעלה_2026','חלקי_בקהילתי','מעלה_עמוס_נקיה','טרמפים','גוש_עציון'];
+const TABS = ['groups','team','articles','media','search'];
+let allMsgs = [];
+let allTeam = [];
+
+function show(name) {
+  for (const t of TABS) document.getElementById(t).style.display = (t === name ? 'block' : 'none');
+  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', TABS[i] === name));
+}
+
+async function loadGroup(name) {
+  const safe_name = name.replace(/"/g,'').replace(/\s/g,'_');
+  try {
+    const r = await fetch(`messages/${safe_name}.json?t=${Date.now()}`);
+    const d = await r.json();
+    return { name: d.group, count: d.count, items: d.items };
+  } catch { return null; }
+}
+
+async function loadGroups() {
+  const el = document.getElementById('groups');
+  let html = '';
+  let totalMsgs = 0;
+  for (const g of GROUPS) {
+    const d = await loadGroup(g);
+    if (!d) continue;
+    totalMsgs += d.count;
+    html += `<h2>${escapeHtml(d.name)} <span style="color:#888;font-size:14px">(${d.count})</span></h2>`;
+    for (const m of d.items.slice(0, 30)) {
+      html += `<div class="msg"><div class="meta">${escapeHtml(m.sender||'?')} · ${(m.time||'').slice(0,16)}</div>
+<div class="text">${escapeHtml((m.text||'').slice(0,400))}</div></div>`;
+    }
+    html += '<hr>';
+  }
+  el.innerHTML = html;
+  document.getElementById('msg-count').textContent = totalMsgs;
+}
+
+async function loadTeam() {
+  try {
+    const r = await fetch('team_chat.jsonl?t=' + Date.now());
+    const text = await r.text();
+    const lines = text.split('\n').filter(l => l.trim()).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean).reverse();
+    allTeam = lines;
+    const html = lines.slice(0, 50).map(l => {
+      const time = l.ts ? l.ts.slice(0, 16) : '';
+      return `<div class="msg"><div class="meta">
+<span class="author ${l.author}">${escapeHtml(l.author||'?')}</span>
+<span class="badge">${l.type||'update'}</span>
+${l.to ? `→ ${escapeHtml(l.to)}` : ''} ${l.tag ? `#${escapeHtml(l.tag)}` : ''} · ${time}</div>
+<div class="text">${escapeHtml((l.content||'').slice(0,500))}</div></div>`;
+    }).join('');
+    document.getElementById('team').innerHTML = html || '<p>אין הודעות</p>';
+    document.getElementById('team-count').textContent = lines.length;
+  } catch (e) {
+    document.getElementById('team').textContent = 'שגיאה: ' + e.message;
+  }
+}
+
+async function loadArticles() {
+  try {
+    const r = await fetch('articles/');  // GitHub doesn't allow listing - fallback to articles.json
+    const r2 = await fetch('https://api.github.com/repos/yossi6742853/maale-knowledge-base/contents/articles?t=' + Date.now());
+    const items = await r2.json();
+    if (!Array.isArray(items)) {
+      document.getElementById('articles').innerHTML = '<p>אין כתבות עדיין</p>';
+      document.getElementById('art-count').textContent = '0';
+      return;
+    }
+    const html = items.filter(i => i.name.endsWith('.md')).map(i =>
+      `<div class="article-card"><a href="${i.html_url}" target="_blank">${escapeHtml(i.name)}</a> <span style="color:#888;font-size:12px">(${i.size} bytes)</span></div>`
+    ).join('');
+    document.getElementById('articles').innerHTML = html || '<p>אין כתבות עדיין</p>';
+    document.getElementById('art-count').textContent = items.filter(i => i.name.endsWith('.md')).length;
+  } catch (e) {
+    document.getElementById('articles').textContent = 'אין עדיין כתבות זמינות.';
+    document.getElementById('art-count').textContent = '0';
+  }
+}
+
+async function loadMedia() {
+  try {
+    const r = await fetch('media/manifest.json?t=' + Date.now());
+    const d = await r.json();
+    document.getElementById('media-count').textContent = d.count;
+    const html = (d.items || []).slice(0, 100).map(i =>
+      `<div class="msg"><div class="meta">${escapeHtml(i.filename)} · ${i.type} · ${(i.size/1024).toFixed(1)} KB</div></div>`
+    ).join('');
+    document.getElementById('media').innerHTML = html || '<p>אין קבצים</p>';
+  } catch { document.getElementById('media').textContent = 'אין נתונים'; }
+}
+
+function escapeHtml(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+document.getElementById('q').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase();
+  if (q.length < 2) { document.getElementById('results').innerHTML = ''; return; }
+  // Search team chat (in memory)
+  const hits = allTeam.filter(l => (l.content||'').toLowerCase().includes(q)).slice(0, 30);
+  document.getElementById('results').innerHTML = hits.map(l =>
+    `<div class="msg"><div class="meta"><span class="author ${l.author}">${escapeHtml(l.author||'?')}</span> · ${l.ts?.slice(0,16)}</div>
+<div class="text">${escapeHtml((l.content||'').slice(0,400))}</div></div>`
+  ).join('') || '<p>לא נמצא</p>';
+});
+
+document.getElementById('now').textContent = new Date().toLocaleString('he-IL');
+loadGroups(); loadTeam(); loadArticles(); loadMedia();
+</script>
+</body>
+</html>
